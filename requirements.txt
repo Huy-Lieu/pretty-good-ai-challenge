@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+twilio
+openai
+websockets
+pyyaml
+python-dotenv

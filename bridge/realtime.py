@@ -5,24 +5,38 @@ import os
 import time
 import websockets
 import config
+import yaml
 
 OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2"
 
-PERSONA_INSTRUCTIONS = (
-    "You are a person calling a medical practice on the phone. You are the caller, "
-    "a patient, not an assistant. Wait for them to greet you before you speak. "
-    "You want to book a routine checkup, you're flexible on day and time. "
-    "Speak naturally and casually, the way a real person talks on the phone."
-)
+def load_scenario(scenario_id):
+    with open("scenarios.yaml") as f:
+        data = yaml.safe_load(f)
+    base = data["base"]
+    persona = "You are a patient calling a medical practice."
+    for s in data["scenarios"]:
+        if s["id"] == scenario_id:
+            persona = s["persona"]
+            break
+    return f"{base}\n\n{persona}"
 
-async def run_realtime_session(twilio_ws, stream_sid):
+
+async def run_realtime_session(twilio_ws, stream_sid, scenario_id="booking_basic"):
+    instructions = load_scenario(scenario_id)
+    # ... and in the session.update, change:
+    #     "instructions": PERSONA_INSTRUCTIONS,
+    # to:
+    #     "instructions": instructions,
+
     headers = {"Authorization": f"Bearer {config.OPENAI_API_KEY}"}
     transcript = []  # list of (speaker, text) collected live
+    bot_buffer = []
+    agent_buffer = []
     call_start = time.time()
 
     os.makedirs("results", exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
-    path = os.path.abspath(os.path.join("results", f"call_{ts}_{stream_sid}.txt"))
+    path = os.path.abspath(os.path.join("results", f"call_{scenario_id}_{ts}_{stream_sid}.txt"))
     transcript_file = open(path, "a")
 
     def log_line(speaker, text):
@@ -41,7 +55,7 @@ async def run_realtime_session(twilio_ws, stream_sid):
                 "audio": {
                     "input": {
                         "format": {"type": "audio/pcmu"},
-                        "transcription": {"model": "whisper-1"},
+                        "transcription": {"model": "gpt-4o-transcribe"},
                         "turn_detection": {"type": "server_vad"},
                     },
                     "output": {
@@ -49,7 +63,7 @@ async def run_realtime_session(twilio_ws, stream_sid):
                         "voice": "alloy",
                     },
                 },
-                "instructions": PERSONA_INSTRUCTIONS,
+                "instructions": instructions,
             },
         }))
 
@@ -77,10 +91,20 @@ async def run_realtime_session(twilio_ws, stream_sid):
                         "streamSid": stream_sid,
                         "media": {"payload": event["delta"]},
                     })
+                elif etype == "response.output_audio_transcript.delta":
+                    bot_buffer.append(event.get("delta", ""))
                 elif etype == "response.output_audio_transcript.done":
-                    log_line("BOT", event.get("transcript", ""))
+                    text = "".join(bot_buffer).strip()
+                    bot_buffer.clear()
+                    if text:
+                        log_line("BOT", event.get("transcript", ""))
+                elif etype == "conversation.item.input_audio_transcription.delta":
+                    agent_buffer.append(event.get("delta", ""))
                 elif etype == "conversation.item.input_audio_transcription.completed":
-                    log_line("AGENT", event.get("transcript", ""))
+                    text = event.get("transcript", "").strip()
+                    agent_buffer.clear()
+                    if text:
+                        log_line("AGENT", event.get("transcript", ""))
                 elif etype == "error":
                     print("OPENAI ERROR:", json.dumps(event, indent=2))
         try:

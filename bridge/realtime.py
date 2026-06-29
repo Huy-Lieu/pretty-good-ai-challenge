@@ -30,7 +30,7 @@ async def run_realtime_session(twilio_ws, stream_sid):
         line = f"[{elapsed//60:02d}:{elapsed%60:02d}] {speaker}: {text}"
         transcript_file.write(line + "\n")
         transcript_file.flush()
-        print("LINE:", line, flush=True)
+        # print("LINE:", line, flush=True)
 
     async with websockets.connect(OPENAI_REALTIME_URL, additional_headers=headers) as openai_ws:
         await openai_ws.send(json.dumps({
@@ -68,7 +68,7 @@ async def run_realtime_session(twilio_ws, stream_sid):
             async for raw in openai_ws:
                 event = json.loads(raw)
                 etype = event.get("type")
-                print("EVENT:", etype)
+                # print("EVENT:", etype)
                 if etype == "session.updated":
                     print("SESSION CONFIRMED:", json.dumps(event, indent=2))
                 elif etype == "response.output_audio.delta":

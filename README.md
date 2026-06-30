@@ -36,15 +36,28 @@ the actual phone call and carries audio. OpenAI's Realtime API listens and
 speaks as the patient. The bridge relays audio between them in both directions
 simultaneously, and writes a live transcript as the call happens.
 
-```
-Orchestrator --> Twilio --> (phone call) --> Target agent
-                   |
-              media stream (WebSocket)
-                   |
-            FastAPI bridge  <-->  OpenAI Realtime API
-                   |
-              results/
-          transcript + manifest
+```mermaid
+flowchart TB
+    ORCH[Orchestrator<br/>batch runner]
+    TW[Twilio<br/>telephony]
+    AGENT[Target AI agent]
+    BR[FastAPI bridge]
+    AI[OpenAI Realtime API]
+    RES[(results/<br/>transcript + manifest)]
+
+    ORCH -->|place call + scenario| TW
+    TW -->|phone call| AGENT
+    TW <-->|media stream / WebSocket| BR
+    BR <-->|relay audio| AI
+    BR -->|write transcript| RES
+    ORCH -->|poll status, fetch recording| RES
+
+    style ORCH fill:#2d3748,stroke:#4a5568,color:#fff
+    style BR fill:#2b6cb0,stroke:#2c5282,color:#fff
+    style AI fill:#2f855a,stroke:#276749,color:#fff
+    style TW fill:#553c9a,stroke:#44337a,color:#fff
+    style AGENT fill:#742a2a,stroke:#63171b,color:#fff
+    style RES fill:#1a202c,stroke:#2d3748,color:#fff
 ```
 
 **The bridge is deliberately thin.** It moves audio and writes transcripts.
@@ -76,7 +89,7 @@ and reduces code surface area.
   server-side VAD turn detection, per-scenario voice assignment
 - Handling both sides of the transcript: `response.output_audio_transcript.done`
   for the bot's own speech and `conversation.item.input_audio_transcription.completed`
-  for the agent's speech via a separate whisper model
+  for the agent's speech via a separate `gpt-4o-transcribe` model
 - Append-per-line transcript capture so partial transcripts survive
   abrupt call endings
 
@@ -195,7 +208,7 @@ Full write-up with transcript evidence and severity ratings:
 ## Notes
 
 Transcripts of the bot's own speech ("BOT") are exact, produced by the
-Realtime model itself. The agent side ("AGENT") is transcribed by a
-separate whisper model and may contain minor noise; audio recordings
+Realtime model itself. The agent side ("AGENT") is transcribed by a separate
+`gpt-4o-transcribe` model and may contain minor noise; audio recordings
 are authoritative for agent-side quotes. Every call maps to a Twilio
 call SID and recording via `results/manifest.json`.

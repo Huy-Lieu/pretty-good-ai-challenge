@@ -14,15 +14,17 @@ def load_scenario(scenario_id):
         data = yaml.safe_load(f)
     base = data["base"]
     persona = "You are a patient calling a medical practice."
+    voice = "marin"
     for s in data["scenarios"]:
         if s["id"] == scenario_id:
             persona = s["persona"]
+            voice = s.get("voice", "marin")
             break
-    return f"{base}\n\n{persona}"
+    return f"{base}\n\n{persona}", voice
 
 
 async def run_realtime_session(twilio_ws, stream_sid, scenario_id="booking_basic"):
-    instructions = load_scenario(scenario_id)
+    instructions, voice = load_scenario(scenario_id)
     # ... and in the session.update, change:
     #     "instructions": PERSONA_INSTRUCTIONS,
     # to:
@@ -56,11 +58,13 @@ async def run_realtime_session(twilio_ws, stream_sid, scenario_id="booking_basic
                     "input": {
                         "format": {"type": "audio/pcmu"},
                         "transcription": {"model": "gpt-4o-transcribe"},
-                        "turn_detection": {"type": "server_vad"},
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "silence_duration_ms": 1000},
                     },
                     "output": {
                         "format": {"type": "audio/pcmu"},
-                        "voice": "alloy",
+                        "voice": voice,
                     },
                 },
                 "instructions": instructions,
